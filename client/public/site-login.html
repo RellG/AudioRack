@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AudioRack.Live - Site Access</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+  <div class="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 w-full max-w-md border border-white/20">
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-white/20 rounded-2xl mx-auto mb-4 flex items-center justify-center">
+        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+        </svg>
+      </div>
+      <h1 class="text-3xl font-bold text-white mb-2">AudioRack.Live</h1>
+      <p class="text-white/80">Professional Equipment Management Platform</p>
+    </div>
+    
+    <form id="siteLoginForm" class="space-y-6">
+      <div>
+        <label for="sitePassword" class="block text-sm font-medium text-white/90 mb-2">
+          Site Access Password
+        </label>
+        <input
+          type="password"
+          id="sitePassword"
+          name="password"
+          required
+          class="w-full px-4 py-3 bg-white/10 border border-white/30 rounded-xl text-white placeholder-white/60 focus:ring-2 focus:ring-white/50 focus:border-transparent backdrop-blur-sm"
+          placeholder="Enter site password"
+        />
+      </div>
+      
+      <button
+        type="submit"
+        id="submitBtn"
+        class="w-full bg-white/20 hover:bg-white/30 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 backdrop-blur-sm border border-white/30 hover:border-white/50"
+      >
+        Access Platform
+      </button>
+    </form>
+    
+    <div id="errorMessage" class="hidden mt-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-100 text-sm"></div>
+    <div id="successMessage" class="hidden mt-4 p-3 bg-green-500/20 border border-green-500/30 rounded-lg text-green-100 text-sm"></div>
+    
+    <div class="mt-8 text-center">
+      <p class="text-white/60 text-xs">
+        Protected by enterprise-grade security<br>
+        Unauthorized access is prohibited
+      </p>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('siteLoginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const submitBtn = document.getElementById('submitBtn');
+      const errorDiv = document.getElementById('errorMessage');
+      const successDiv = document.getElementById('successMessage');
+      const password = document.getElementById('sitePassword').value;
+      
+      // Hide previous messages
+      errorDiv.classList.add('hidden');
+      successDiv.classList.add('hidden');
+      
+      // Show loading state
+      submitBtn.textContent = 'Authenticating...';
+      submitBtn.disabled = true;
+      
+      try {
+        const response = await fetch('/api/site-auth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password }),
+          credentials: 'include' // Important: include cookies/session
+        });
+        
+        const data = await response.json();
+        console.log('Auth response:', data); // Debug log
+        
+        if (data.success) {
+          successDiv.textContent = 'Access granted! Redirecting to dashboard...';
+          successDiv.classList.remove('hidden');
+          
+          // Test if session is working by trying to access main page
+          setTimeout(async () => {
+            try {
+              const testResponse = await fetch('/', { credentials: 'include' });
+              console.log('Test redirect response:', testResponse.status);
+              if (testResponse.status === 200 || testResponse.redirected) {
+                window.location.replace('/');
+              } else {
+                console.error('Session not working, response:', testResponse.status);
+                errorDiv.textContent = 'Authentication succeeded but session failed. Please try refreshing the page.';
+                errorDiv.classList.remove('hidden');
+                successDiv.classList.add('hidden');
+              }
+            } catch (e) {
+              console.error('Redirect test failed:', e);
+              window.location.replace('/');
+            }
+          }, 1500);
+        } else {
+          errorDiv.textContent = data.message || 'Invalid password';
+          errorDiv.classList.remove('hidden');
+        }
+      } catch (error) {
+        console.error('Auth error:', error);
+        errorDiv.textContent = 'Connection error. Please try again.';
+        errorDiv.classList.remove('hidden');
+      } finally {
+        submitBtn.textContent = 'Access Platform';
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
