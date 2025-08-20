@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, X, Plus, Search, RefreshCw, AlertTriangle, MoreVertical, Clock, MapPin, User, Edit, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { apiService } from '../services/api';
@@ -91,7 +91,7 @@ const EquipmentApp: React.FC = () => {
       return { previousEquipment };
     },
     
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       // If the mutation fails, use the context to roll back
       if (context?.previousEquipment) {
         queryClient.setQueryData(['equipment'], context.previousEquipment);

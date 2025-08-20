@@ -1,9 +1,9 @@
 const WebSocket = require('ws');
 
-console.log('🎭 Connecting to Playwright server...');
+console.log('🎭 Connecting to Playwright server on Pi...');
 
-// Connect to your Playwright server
-const ws = new WebSocket('ws://localhost:9222/c1f3115d18f43efd6c6b4778dec8ecff');
+// Connect to your Playwright server on Pi
+const ws = new WebSocket('ws://192.168.4.129:9222/c1f3115d18f43efd6c6b4778dec8ecff');
 
 ws.on('open', () => {
   console.log('✅ Connected to Playwright server!');
