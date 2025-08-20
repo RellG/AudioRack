@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, X, Plus, Search, RefreshCw, AlertTriangle, MoreVertical, Clock, MapPin, User, Edit, Trash2 } from 'lucide-react';
+import { Check, X, Plus, Search, RefreshCw, AlertTriangle, MoreVertical, Clock, MapPin, User, Edit, Trash2, Wifi, WifiOff } from 'lucide-react';
 import { apiService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useEquipmentSocket } from '../hooks/useEquipmentSocket';
 import type { Equipment, DeletedEquipment, CreateEquipmentDto, UpdateEquipmentDto, EquipmentFilters } from '../types';
 
 const categories = ['Camera', 'Audio', 'Lighting', 'Switching', 'Storage', 'Cables', 'Accessories'] as const;
@@ -10,6 +11,9 @@ const categories = ['Camera', 'Audio', 'Lighting', 'Switching', 'Storage', 'Cabl
 const EquipmentApp: React.FC = () => {
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
+  
+  // WebSocket connection for real-time updates
+  const { isConnected: socketConnected, lastUpdate } = useEquipmentSocket('global');
   
   const [filters, setFilters] = useState<EquipmentFilters>({
     search: '',
@@ -27,25 +31,26 @@ const EquipmentApp: React.FC = () => {
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [showDeletedItems, setShowDeletedItems] = useState(false);
 
-  // Fetch equipment
+  // Fetch equipment with reduced polling when WebSocket is connected
   const { data: equipmentData, isLoading: equipmentLoading } = useQuery({
     queryKey: ['equipment', filters],
     queryFn: () => apiService.getEquipment(filters),
-    refetchInterval: 30000, // Refetch every 30 seconds for real-time updates
+    refetchInterval: socketConnected ? 15000 : 5000, // 15s with WebSocket, 5s without
+    staleTime: socketConnected ? 10000 : 3000, // More aggressive caching with WebSocket
   });
 
   // Fetch stats
   const { data: statsData } = useQuery({
     queryKey: ['equipment-stats'],
     queryFn: () => apiService.getEquipmentStats(),
-    refetchInterval: 30000,
+    refetchInterval: socketConnected ? 20000 : 10000,
   });
 
   // Fetch deleted equipment
   const { data: deletedEquipmentData } = useQuery({
     queryKey: ['deleted-equipment'],
     queryFn: () => apiService.getDeletedEquipment(),
-    refetchInterval: 30000,
+    refetchInterval: socketConnected ? 30000 : 15000,
   });
 
   // Create equipment mutation
@@ -58,15 +63,52 @@ const EquipmentApp: React.FC = () => {
     },
   });
 
-  // Update equipment mutation
+  // Update equipment mutation with optimistic updates
   const updateMutation = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: UpdateEquipmentDto }) => 
       apiService.updateEquipment(id, updates),
+    
+    // Optimistic update for immediate UI response
+    onMutate: async ({ id, updates }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['equipment'] });
+      
+      // Snapshot the previous value
+      const previousEquipment = queryClient.getQueryData(['equipment']);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['equipment'], (old: any) => {
+        if (!old?.data) return old;
+        
+        return {
+          ...old,
+          data: old.data.map((item: Equipment) =>
+            item.id === id ? { ...item, ...updates } : item
+          )
+        };
+      });
+
+      return { previousEquipment };
+    },
+    
+    onError: (err, variables, context) => {
+      // If the mutation fails, use the context to roll back
+      if (context?.previousEquipment) {
+        queryClient.setQueryData(['equipment'], context.previousEquipment);
+      }
+    },
+    
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      // Don't invalidate immediately - let WebSocket handle the real update
+      // Only invalidate stats as they might need server calculation
       queryClient.invalidateQueries({ queryKey: ['equipment-stats'] });
       handleCancelEdit();
     },
+    
+    onSettled: () => {
+      // Always refetch after error or success to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+    }
   });
 
   // Delete equipment mutation
@@ -414,20 +456,20 @@ const EquipmentApp: React.FC = () => {
         </div>
       </div>
 
-      {/* Equipment List */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+      {/* Equipment List - Mobile Optimized */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-4 md:py-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           {equipment.map(item => (
             <div key={item._id} className={`
-              group relative bg-white dark:bg-gray-800 rounded-2xl shadow-sm hover:shadow-xl 
+              group relative bg-white dark:bg-gray-800 rounded-xl md:rounded-2xl shadow-sm hover:shadow-xl 
               transition-all duration-300 border border-gray-200 dark:border-gray-700
               ${item.priority === 'critical' ? 'ring-2 ring-red-500/20 border-red-500/50' : 
                 item.priority === 'high' ? 'ring-2 ring-orange-500/20 border-orange-500/50' : ''}
-              hover:scale-[1.02] hover:border-blue-500/50
+              hover:scale-[1.01] md:hover:scale-[1.02] hover:border-blue-500/50
             `}>
               
-              {/* Header with Status */}
-              <div className="flex items-start justify-between p-4 pb-2">
+              {/* Header with Status - Mobile Optimized */}
+              <div className="flex items-start justify-between p-3 md:p-4 pb-2">
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                     {item.name}
@@ -482,44 +524,44 @@ const EquipmentApp: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex gap-2">
+                {/* Action Buttons - Mobile Optimized */}
+                <div className="flex gap-1 md:gap-2">
                   <button
                     onClick={() => updateItemStatus(item._id, 'pending')}
                     disabled={updateMutation.isPending}
-                    className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                    className={`flex-1 inline-flex items-center justify-center gap-1 md:gap-2 px-2 py-2 md:px-3 md:py-2.5 rounded-lg md:rounded-xl text-xs md:text-sm font-semibold transition-all duration-200 ${
                       item.status === 'pending' 
                         ? 'bg-yellow-500 text-white shadow-lg ring-2 ring-yellow-500/30' 
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-yellow-500 hover:text-white hover:shadow-lg hover:scale-105'
                     } ${updateMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    <Clock className="w-4 h-4" />
+                    <Clock className="w-3 h-3 md:w-4 md:h-4" />
                     <span className="hidden sm:inline">Pending</span>
                   </button>
                   
                   <button
                     onClick={() => updateItemStatus(item._id, 'checked')}
                     disabled={updateMutation.isPending}
-                    className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                    className={`flex-1 inline-flex items-center justify-center gap-1 md:gap-2 px-2 py-2 md:px-3 md:py-2.5 rounded-lg md:rounded-xl text-xs md:text-sm font-semibold transition-all duration-200 ${
                       item.status === 'checked' 
                         ? 'bg-green-500 text-white shadow-lg ring-2 ring-green-500/30' 
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-green-500 hover:text-white hover:shadow-lg hover:scale-105'
                     } ${updateMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    <Check className="w-4 h-4" />
+                    <Check className="w-3 h-3 md:w-4 md:h-4" />
                     <span className="hidden sm:inline">Checked</span>
                   </button>
                   
                   <button
                     onClick={() => updateItemStatus(item._id, 'issue')}
                     disabled={updateMutation.isPending}
-                    className={`flex-1 inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                    className={`flex-1 inline-flex items-center justify-center gap-1 md:gap-2 px-2 py-2 md:px-3 md:py-2.5 rounded-lg md:rounded-xl text-xs md:text-sm font-semibold transition-all duration-200 ${
                       item.status === 'issue'
                         ? 'bg-red-500 text-white shadow-lg ring-2 ring-red-500/30'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-red-500 hover:text-white hover:shadow-lg hover:scale-105'
                     } ${updateMutation.isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    <AlertTriangle className="w-4 h-4" />
+                    <AlertTriangle className="w-3 h-3 md:w-4 md:h-4" />
                     <span className="hidden sm:inline">Issue</span>
                   </button>
 
@@ -679,15 +721,34 @@ const EquipmentApp: React.FC = () => {
           </div>
         )}
 
-        {/* Modern Live Updates Indicator */}
-        <div className="fixed bottom-6 right-6 z-50">
-          <div className="flex items-center space-x-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 rounded-2xl px-4 py-3 shadow-lg hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse shadow-lg"></div>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Live</span>
+        {/* Modern Live Updates Indicator with WebSocket Status - Mobile Optimized */}
+        <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50">
+          <div className="flex items-center space-x-2 md:space-x-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 rounded-xl md:rounded-2xl px-3 py-2 md:px-4 md:py-3 shadow-lg hover:shadow-xl transition-all duration-300">
+            <div className="flex items-center space-x-1 md:space-x-2">
+              {socketConnected ? (
+                <>
+                  <Wifi className="w-3 h-3 md:w-4 md:h-4 text-green-500" />
+                  <div className="w-2 h-2 md:w-3 md:h-3 bg-green-400 rounded-full animate-pulse shadow-lg"></div>
+                  <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:inline">Real-time</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3 md:w-4 md:h-4 text-orange-500" />
+                  <div className="w-2 h-2 md:w-3 md:h-3 bg-orange-400 rounded-full animate-pulse shadow-lg"></div>
+                  <span className="text-xs md:text-sm font-medium text-gray-700 dark:text-gray-300 hidden sm:inline">Polling</span>
+                </>
+              )}
             </div>
-            <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">{equipment.length} items</span>
+            <div className="w-px h-3 md:h-4 bg-gray-300 dark:bg-gray-600"></div>
+            <span className="text-xs md:text-sm font-semibold text-gray-900 dark:text-white">{equipment.length}</span>
+            {lastUpdate && (
+              <>
+                <div className="w-px h-3 md:h-4 bg-gray-300 dark:bg-gray-600 hidden sm:block"></div>
+                <span className="text-xs text-gray-500 dark:text-gray-400 capitalize hidden sm:inline">
+                  {lastUpdate.operation}d
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -131,6 +131,22 @@ const Equipment = sequelize.define('Equipment', {
     {
       name: 'equipment_search_idx',
       fields: ['name', 'location']
+    },
+    {
+      name: 'equipment_updated_at_idx',
+      fields: ['updatedAt']
+    },
+    {
+      name: 'equipment_priority_status_idx',
+      fields: ['priority', 'status']
+    },
+    {
+      name: 'equipment_location_category_idx',
+      fields: ['location', 'category']
+    },
+    {
+      name: 'equipment_active_team_idx',
+      fields: ['isActive', 'teamId']
     }
   ],
   hooks: {

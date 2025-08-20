@@ -11,6 +11,7 @@ const { User, Equipment, EquipmentHistory } = require('./models/index');
 const authRoutes = require('./routes/auth');
 const equipmentRoutes = require('./routes/equipment');
 const { siteAuth, authenticateSite } = require('./middleware/siteAuth');
+const webSocketService = require('./services/websocket');
 const { 
   createDDoSProtection, 
   authRateLimit, 
@@ -221,6 +222,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`Database: PostgreSQL`);
   console.log(`Access restricted to: localhost and ethernet interface only`);
+  
+  // Initialize WebSocket service
+  webSocketService.initialize(server);
 });
 
 module.exports = { app, server };

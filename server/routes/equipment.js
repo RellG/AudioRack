@@ -9,6 +9,7 @@ const DeletedEquipment = require('../models/DeletedEquipment');
 const { protect } = require('../middleware/auth');
 const { logEquipmentActivity, captureRequestData } = require('../middleware/activityLogger');
 const cyphorLogs = require('../services/cyphorLogs');
+const webSocketService = require('../services/websocket');
 
 const router = express.Router();
 
@@ -135,6 +136,9 @@ router.post('/', [
     // Send to CyphorLogs
     await cyphorLogs.logEquipmentCreate(equipment, req.user.name);
 
+    // Broadcast WebSocket update
+    webSocketService.broadcastEquipmentUpdate('create', equipment, 'global');
+
     // Format response to match frontend expectations
     const formattedEquipment = {
       _id: equipment.id,
@@ -220,6 +224,9 @@ router.put('/:id', [
       await cyphorLogs.logEquipmentMove(equipment, oldValues.location, req.body.location, req.user.name);
     }
     await cyphorLogs.logEquipmentUpdate(equipment, oldValues, newValues, req.user.name);
+
+    // Broadcast WebSocket update
+    webSocketService.broadcastEquipmentUpdate('update', equipment, 'global');
 
     // Format response to match frontend expectations
     const formattedEquipment = {
@@ -308,6 +315,9 @@ router.delete('/:id', async (req, res) => {
 
     // Send to CyphorLogs
     await cyphorLogs.logEquipmentDelete(equipment, req.user.name);
+
+    // Broadcast WebSocket update
+    webSocketService.broadcastEquipmentUpdate('delete', equipment, 'global');
 
     await transaction.commit();
 
@@ -540,6 +550,9 @@ router.post('/deleted/:id/restore', async (req, res) => {
 
     // Send to CyphorLogs
     await cyphorLogs.logEquipmentRestore(restoredEquipment, req.user.name);
+
+    // Broadcast WebSocket update
+    webSocketService.broadcastEquipmentUpdate('restore', restoredEquipment, 'global');
 
     await transaction.commit();
 
